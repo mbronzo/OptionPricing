@@ -1,0 +1,904 @@
+import math
+from scipy.stats import norm
+import tkinter as tk
+from tkinter import messagebox
+import pulp as pulp
+import numpy as np
+
+
+LARGE_FONT = ("Verdana", 12)
+
+
+class Window(tk.Tk):
+
+    def __init__(self, *args, **kwargs):
+        tk.Tk.__init__(self, *args, **kwargs)
+        container = tk.Frame(self)
+        container.pack(side="top", fill="both", expand=True)
+        self.winfo_toplevel().title("Option pricing and Portfolio Optimization")
+        container.grid_rowconfigure(0, weight=1)
+        container.grid_columnconfigure(0, weight=1)
+
+        self.frames = {}
+
+        for F in (StartPage, PageOne, PageTwo, PageThree, PageFour, PageFive):
+            frame = F(container, self)
+
+            self.frames[F] = frame
+
+            frame.grid(row=0, column=0, sticky="nsew")
+
+        self.show_frame(StartPage)
+
+    def show_frame(self, cont):
+        frame = self.frames[cont]
+        frame.tkraise()
+
+
+class StartPage(tk.Frame):
+
+    def __init__(self, parent, controller):
+        tk.Frame.__init__(self, parent)
+        label = tk.Label(self, text="Home Page", font=LARGE_FONT)
+        label.pack(pady=10, padx=10)
+
+        introduction = tk.Label(self, text=" Welcome to my Option Pricing and Portfolio Hedging calculator.\n\
+         My name is Marco Bronzetti and this is my Bachelor's Final Project."\
+         "\n\nLet me introduce you to this application, you are currently in the Home Page and there are 5 more pages"
+         " which are the actual calculators\nI will now go one by one through their utilities:\n\n"
+         "Page 1: This page is the option calculator, the Radio Button at the top allows you to select the option type,"
+         "which can be put or call,\nwhile the boxes take the parameters necessary to price the option,"
+         "in order: the spot price, the strike  price, the risk-free interest rate(%),\n\
+         the risk-free interest rate(%), the asset volatility(%), the option maturity in years and the dividends "
+         "yield(%) of the underlying asset.\n\n"
+         "Page 2: This page is a simple Delta Hedging calculator, it takes the value of the Portfolio Delta\n"
+         "you want to hedge and the value of the Delta of the option, the import button allows you to import"
+         "the result of Page 1.\n\n"
+         "Page 3: This page is a calculator that use one option to hedge the Delta and another Greek\n"
+         "of your choice to hedge an hypothetical portfolio, the menu at the top makes you select which\n"
+         "Greek to import from Page 1\n\n"
+         "Page 4: This page is the same as Page 3 but uses instead 2 options to hedge Delta and another Greek\n"
+         "of your choice, the import buttons allows you to import values from Page 1, remember that they are in order\n"
+         "so that you can calculate the price of one option import it as option 1 and then calculate another option\n"
+         "and import it as option 2.\n\n"
+         "Page 5: This last page is similar to Page 4 for the widgets that are present, and allows you to hedge\n"
+         "Delta and other two Greeks of your choice with two options. Nevertheless this has additional functionalities\n"
+         "in fact it requires to input the price of each option in order to minimize the price of the hedging portfolio\n"
+         "through linear programming.\n\n")
+        introduction.pack()
+
+        button_1 = tk.Button(self, text="Visit Page 1", command=lambda: controller.show_frame(PageOne))
+        button_1.pack()
+
+        button_2 = tk.Button(self, text="Visit Page 2", command=lambda: controller.show_frame(PageTwo))
+        button_2.pack()
+
+        button_3 = tk.Button(self, text="Visit Page 3", command=lambda: controller.show_frame(PageThree))
+        button_3.pack()
+
+        button_4 = tk.Button(self, text="Visit Page 4", command=lambda: controller.show_frame(PageFour))
+        button_4.pack()
+
+        button_5 = tk.Button(self, text="Visit Page 5", command=lambda: controller.show_frame(PageFive))
+        button_5.pack()
+
+
+class PageOne(tk.Frame):
+
+    def __init__(self, parent, controller):
+
+        def n_1(x):
+            return (2 * math.pi) ** (-1 / 2) * np.exp(- .5 * x ** 2)
+
+        def BSCall(s, k, r, sigma, t, q):
+            d1 = (np.log(s / k) + (r - q + .5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
+            d2 = d1 - sigma * np.sqrt(t)
+            norm_d1, norm_d2 = norm.cdf(d1, 0.0, 1.0), norm.cdf(d2, 0.0, 1.0)
+            exp_rt, exp_qt = np.exp(-r * t), np.exp(-q * t)
+            binary_call = exp_rt * norm_d2
+            bsm_call = s * exp_qt * norm_d1 - k * binary_call
+
+            return bsm_call
+
+        def BSPut(s, k, r, sigma, t, q):
+            d1 = (np.log(s / k) + (r - q + .5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
+            d2 = d1 - sigma * np.sqrt(t)
+            norm_d1, norm_d2 = norm.cdf(d1, 0.0, 1.0), norm.cdf(d2, 0.0, 1.0)
+            exp_rt, exp_qt = np.exp(-r * t), np.exp(-q * t)
+            binary_put = exp_rt * (1 - norm_d2)
+            bsm_put = - s * exp_qt * (1 - norm_d1) + k * binary_put
+
+            return bsm_put
+
+        def DeltaCall(s, k, r, sigma, q, t):
+            d1 = (np.log(s / k) + (r - q + .5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
+            d2 = d1 - sigma * np.sqrt(t)
+            norm_d1, norm_d2 = norm.cdf(d1), norm.cdf(d2)
+            exp_rt, exp_qt = np.exp(-r * t), np.exp(-q * t)
+            bsm_deltac = exp_qt * norm_d1
+            return bsm_deltac
+
+        def Gamma(s, k, r, sigma, t, q):
+            d1 = (np.log(s / k) + (r - q + .5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
+            exp_rt, exp_qt = np.exp(-r * t), np.exp(-q * t)
+            bsm_gamma = exp_qt / (s * sigma * np.sqrt(t)) * n_1(d1)
+            return bsm_gamma
+
+        def ThetaCall(s, k, sigma, r, t, q):
+            d1 = (np.log(s / k) + (r - q + .5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
+            d2 = d1 - sigma * np.sqrt(t)
+            norm_d1, norm_d2 = norm.cdf(d1), norm.cdf(d2)
+            exp_rt, exp_qt = np.exp(-r * t), np.exp(-q * t)
+            bsm_thetac = (n_1(d1) * (- s * sigma * 0.5 / np.sqrt(t)) - r * k * exp_rt * norm_d2) / 365
+            return bsm_thetac
+
+        def Vega(s, k, r, t, q, sigma):
+            d1 = (np.log(s / k) + (r - q + .5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
+            exp_rt, exp_qt = np.exp(-r * t), np.exp(-q * t)
+            bsm_vega = 1 / 100 * s * exp_qt * np.sqrt(t) * n_1(d1)
+            return bsm_vega
+
+        def RhoCall(s, k, r, sigma, t, q):
+            d1 = (np.log(s / k) + (r - q + .5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
+            d2 = d1 - sigma * np.sqrt(t)
+            norm_d1, norm_d2 = norm.cdf(d1), norm.cdf(d2)
+            exp_rt, exp_qt = np.exp(-r * t), np.exp(-q * t)
+            bsm_rhoc = 1 / 100 * k * t * exp_rt * norm_d2
+            return bsm_rhoc
+
+        def DeltaPut(s, k, r, sigma, t, q):
+            d1 = (np.log(s / k) + (r - q + .5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
+            d2 = d1 - sigma * np.sqrt(t)
+            norm_d1, norm_d2 = norm.cdf(d1), norm.cdf(d2)
+            exp_rt, exp_qt = np.exp(-r * t), np.exp(-q * t)
+            bsm_deltap = exp_qt * (norm_d1 - 1)
+            return bsm_deltap
+
+        def ThetaPut(s, k, sigma, r, t, q):
+            d1 = (np.log(s / k) + (r - q + .5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
+            d2 = d1 - sigma * np.sqrt(t)
+            norm_d1, norm_d2 = norm.cdf(d1), norm.cdf(d2)
+            exp_rt, exp_qt = np.exp(-r * t), np.exp(-q * t)
+            bsm_thetap = (n_1(-d1) * (-s * sigma * 0.5 / np.sqrt(t)) + r * k * exp_rt * (1 - norm_d2)) / 365
+            return bsm_thetap
+
+        def RhoPut(s, k, r, sigma, t, q):
+            d1 = (np.log(s / k) + (r - q + .5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
+            d2 = d1 - sigma * np.sqrt(t)
+            norm_d1, norm_d2 = norm.cdf(d1), norm.cdf(d2)
+            exp_rt, exp_qt = np.exp(-r * t), np.exp(-q * t)
+            bsm_rhop = -1 / 100 * k * t * exp_rt * (1 - norm_d2)
+            return bsm_rhop
+
+        def ChooseWhatToDo():
+            try:
+                if v.get() == 1:  # se clicco il primo radiobutton
+                    BSCall_display()
+                    display()
+                    # return BSCall_display()
+
+                else:
+                    BSPut_display()
+                    display()
+                    # return BSPut_display()
+
+            except:
+                messagebox.showinfo("Error", "invalid input, please check again your data")
+
+        def BSCall_display():
+            S = float(text_spot.get())
+            K = float(text_strike.get())
+            R = float(text_intrate.get()) / 100
+            SIGMA = float(text_sigma.get()) / 100
+            T = float(text_maturity.get())
+            Q = float(text_dividends.get()) / 100
+            # d1 = (np.log(S / K) + (r - q + 0.5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
+            # d2 = (np.log(S / K) + (r - q - 0.5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
+            global price
+            price = BSCall(S, K, R, SIGMA, T, Q)
+            global delta
+            delta = DeltaCall(S, K, R, SIGMA, Q, T)
+            global gamma
+            gamma = Gamma(S, K, R, SIGMA, T, Q)
+            global theta
+            theta = ThetaCall(S, K, SIGMA, R, T, Q)
+            global vega
+            vega = Vega(S, K, R, T, Q, SIGMA)
+            global rho
+            rho = RhoCall(S, K, R, SIGMA, T, Q)
+            return price, delta, gamma, theta, vega, rho
+
+        def BSPut_display():
+            S = float(text_spot.get())
+            K = float(text_strike.get())
+            R = float(text_intrate.get()) / 100
+            SIGMA = float(text_sigma.get()) / 100
+            T = float(text_maturity.get())
+            Q = float(text_dividends.get()) / 100
+            # d1 = (np.log(S / K) + (r - q + 0.5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
+            # d2 = (np.log(S / K) + (r - q - 0.5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
+            global price
+            price = BSPut(S, K, R, SIGMA, T, Q)
+            global delta
+            delta = DeltaPut(S, K, R, SIGMA, T, Q)
+            global gamma
+            gamma = Gamma(S, K, R, SIGMA, T, Q)
+            global theta
+            theta = ThetaPut(S, K, SIGMA, R, T, Q)
+            global vega
+            vega = Vega(S, K, R, T, Q, SIGMA)
+            global rho
+            rho = RhoPut(S, K, R, SIGMA, T, Q)
+            return price, delta, gamma, theta, vega, rho
+
+        def display():
+            price_display1.config(text="The Price of the option is " + str(price))
+            delta_display1.config(text="The Delta of the option is " + str(delta))
+            gamma_display1.config(text="The Gamma of the option is " + str(gamma))
+            theta_display1.config(text="The daily Theta of the option is " + str(theta))
+            vega_display1.config(text="The Vega % of the option is " + str(vega / 100))
+            rho_display1.config(text="The Rho % of the option is " + str(rho / 100))
+
+        def clear_1():
+            text_spot.delete(0, 'end')
+            text_strike.delete(0, 'end')
+            text_intrate.delete(0, 'end')
+            text_sigma.delete(0, 'end')
+            text_maturity.delete(0, 'end')
+            text_dividends.delete(0, 'end')
+            price_display1.config(text="")
+            delta_display1.config(text="")
+            gamma_display1.config(text="")
+            theta_display1.config(text="")
+            vega_display1.config(text="")
+            rho_display1.config(text="")
+
+        tk.Frame.__init__(self, parent)
+        v = tk.IntVar()
+        v.set(1)  # inizializza selezionando il primo radiobutton
+        tk.Radiobutton(self, highlightbackground="red", text="Call", variable=v, value=1).pack()
+        tk.Radiobutton(self, highlightbackground="red", text="Put", variable=v, value=2).pack()
+
+        label1 = tk.Label(self, text='Welcome, insert the data to price the option', font=("Times New Roman", 15))
+        label1.pack()
+        label2 = tk.Label(self, text="Insert spot price: ")
+        label2.pack()
+        text_spot = tk.Entry(self)
+        text_spot.pack()
+        label3 = tk.Label(self, text="Insert strike price: ")
+        label3.pack()
+        text_strike = tk.Entry(self)
+        text_strike.pack()
+        label4 = tk.Label(self, text="Insert risk-free interest rate: ")
+        label4.pack()
+        text_intrate = tk.Entry(self)
+        text_intrate.pack()
+        label5 = tk.Label(self, text="Insert asset volatility in %: ")
+        label5.pack()
+        text_sigma = tk.Entry(self)
+        text_sigma.pack()
+        label6 = tk.Label(self, text="Insert time to maturity in years: ")
+        label6.pack()
+        text_maturity = tk.Entry(self)
+        text_maturity.pack()
+        label7 = tk.Label(self, text="Insert the asset dividends in %: ")
+        label7.pack()
+        text_dividends = tk.Entry(self)
+        text_dividends.pack()
+        calculate1 = tk.Button(self, text='Calculate', command=ChooseWhatToDo, fg="red")
+        calculate1.pack()
+
+        price_display1 = tk.Label(self, text="")
+        price_display1.pack()
+
+        delta_display1 = tk.Label(self, text="")
+        delta_display1.pack()
+
+        gamma_display1 = tk.Label(self, text="")
+        gamma_display1.pack()
+
+        theta_display1 = tk.Label(self, text="")
+        theta_display1.pack()
+
+        vega_display1 = tk.Label(self, text="")
+        vega_display1.pack()
+
+        rho_display1 = tk.Label(self, text="")
+        rho_display1.pack()
+
+        button_5 = tk.Button(self, text="Visit Home", command=lambda: controller.show_frame(StartPage))
+        button_5.pack()
+
+        button_6 = tk.Button(self, text="Visit Page 2", command=lambda: controller.show_frame(PageTwo))
+        button_6.pack()
+
+        button_6 = tk.Button(self, text="Visit Page 3", command=lambda: controller.show_frame(PageThree))
+        button_6.pack()
+
+        button_6 = tk.Button(self, text="Visit Page 4", command=lambda: controller.show_frame(PageFour))
+        button_6.pack()
+
+        button_5 = tk.Button(self, text="Visit Page 5", command=lambda: controller.show_frame(PageFive))
+        button_5.pack()
+
+        clear_button = tk.Button(self, text="Clear", command=clear_1)
+        clear_button.pack()
+
+
+class PageTwo(tk.Frame):
+
+    def __init__(self, parent, controller):
+        tk.Frame.__init__(self, parent)
+
+        def Delta_hedging():
+            por_delta = float(text_port_delta.get())
+            op_delta = float(text_op_delta.get())
+            n1 = -por_delta / op_delta
+            return n1
+
+        def display_2():
+            contract_2 = Delta_hedging()
+            price_display2.config(text="\nIn order to Delta hedge your portfolio, you need to take a "
+            f'{str(round(contract_2))} position in option 1\n')
+
+        def both_2():
+            try:
+                Delta_hedging()
+                display_2()
+
+            except:
+                messagebox.showinfo("Error", "Invalid input, please check again your data")
+
+        def import_1():
+
+            try:
+                text_op_delta.insert(0, delta)
+
+            except:
+                messagebox.showinfo("Error", "There are no data from page 1 to import.")
+
+        def clear_2():
+            text_port_delta.delete(0, 'end')
+            text_op_delta.delete(0, 'end')
+            price_display2.config(text="")
+
+        label8 = tk.Label(self, text='Welcome, select your strategy and insert the Portfolio data: ',
+                       font=("Times New Roman", 15))
+        label8.pack()
+
+        label9 = tk.Label(self, text="Insert Portfolio initial Delta: ")
+        label9.pack()
+        text_port_delta = tk.Entry(self)
+        text_port_delta.pack()
+        label10 = tk.Label(self, text="Insert Delta of the option you want to use to hedge: ")
+        label10.pack()
+        text_op_delta = tk.Entry(self)
+        text_op_delta.pack()
+
+        calculate2 = tk.Button(self, text='Calculate', command=both_2, fg="red")
+        calculate2.pack()
+        price_display2 = tk.Label(self, text="")
+        price_display2.pack()
+
+        button_7 = tk.Button(self, text="Visit Home", command=lambda: controller.show_frame(StartPage))
+        button_7.pack()
+
+        button_8 = tk.Button(self, text="Visit Page 1", command=lambda: controller.show_frame(PageOne))
+        button_8.pack()
+
+        button_9 = tk.Button(self, text="Visit Page 3", command=lambda: controller.show_frame(PageThree))
+        button_9.pack()
+
+        button_10 = tk.Button(self, text="Visit Page 4", command=lambda: controller.show_frame(PageFour))
+        button_10.pack()
+
+        button_11 = tk.Button(self, text="Visit Page 5", command=lambda: controller.show_frame(PageFive))
+        button_11.pack()
+
+        import_button_1 = tk.Button(self, text="Import results from Page One", command=import_1)
+        import_button_1.pack()
+
+        clear_button2 = tk.Button(self, text="Clear", command=clear_2)
+        clear_button2.pack()
+
+
+class PageThree(tk.Frame):
+
+    def __init__(self, parent, controller):
+        tk.Frame.__init__(self, parent)
+
+        def Delta_greek_hedging():
+            por_delta = float(text_port_delta.get())
+            op_delta = float(text_op_delta.get())
+            por_greek = float(text_por_greek.get())
+            op_greek = float(text_op_greek.get())
+
+            n1 = -por_greek / op_greek
+            fin_port_delta = -por_delta - (n1 * op_delta)
+            return fin_port_delta, n1
+
+        def display_3():
+
+            contract = Delta_greek_hedging()
+            price_display2.config(text="\nIn order to Delta hedge your portfolio, you need to take a " \
+            + str(round(contract[0])) + " position in the underlying asset,\n " \
+            "furthermore to Gamma hedge your portfolio you should take a " \
+            "position in option 1 of " + str(round(contract[1])))
+
+        def both_3():
+            try:
+                Delta_greek_hedging()
+                display_3()
+
+            except:
+                messagebox.showinfo("Error", "invalid input, please check again your data")
+
+        def import_2():
+            try:
+                text_op_delta.insert(0, delta)
+                if def_strategy.get() == 'Gamma':
+                    text_op_greek.insert(0, gamma)
+                if def_strategy.get() == 'Theta':
+                    text_op_greek.insert(0, theta)
+                if def_strategy.get() == 'Vega':
+                    text_op_greek.insert(0, vega)
+                if def_strategy.get() == 'Rho':
+                    text_op_greek.insert(0, rho)
+
+            except:
+                messagebox.showinfo("Error", "There are no data from page 1 to import.")
+
+        def take_strategy(strategy):
+            label12.config(text='Insert ' + str(def_strategy.get()) + ' of the option you to use to hedge: ')
+            label11.config(text='Insert ' + str(def_strategy.get()) + ' of the initial portfolio you want to hedge: ')
+
+        def clear_3():
+            text_port_delta.delete(0, 'end')
+            text_op_delta.delete(0, 'end')
+            text_por_greek.delete(0, 'end')
+            text_op_greek.delete(0, 'end')
+            price_display2.config(text="")
+
+        label8 = tk.Label(self, text='Welcome, select your strategy and insert the Portfolio data: ',
+                       font=("Times New Roman", 15))
+        label8.pack()
+
+        global def_strategy
+        def_strategy = tk.StringVar(self)
+        def_strategy.set('Gamma')
+        strategy = tk.OptionMenu(self, def_strategy, "Gamma", "Theta", "Vega", "Rho", command=take_strategy)
+        strategy.pack()
+
+        label9 = tk.Label(self, text="Insert Portfolio initial Delta: ")
+        label9.pack()
+        text_port_delta = tk.Entry(self)
+        text_port_delta.pack()
+        label10 = tk.Label(self, text="Insert Delta of the option you want to use to hedge: ")
+        label10.pack()
+        text_op_delta = tk.Entry(self)
+        text_op_delta.pack()
+        label11 = tk.Label(self, text="Insert Gamma of the initial portfolio you want to hedge: ")
+        label11.pack()
+        text_por_greek = tk.Entry(self)
+        text_por_greek.pack()
+        label12 = tk.Label(self, text="Insert Gamma of the option you to use to hedge: ")
+        label12.pack()
+        text_op_greek = tk.Entry(self)
+        text_op_greek.pack()
+
+        calculate2 = tk.Button(self, text='Calculate', command=both_3, fg="red")
+        calculate2.pack()
+        price_display2 = tk.Label(self, text="")
+        price_display2.pack()
+
+        button_12 = tk.Button(self, text="Visit Home", command=lambda: controller.show_frame(StartPage))
+        button_12.pack()
+
+        button_13 = tk.Button(self, text="Visit Page 1", command=lambda: controller.show_frame(PageOne))
+        button_13.pack()
+
+        button_14 = tk.Button(self, text="Visit Page 2", command=lambda: controller.show_frame(PageTwo))
+        button_14.pack()
+
+        button_15 = tk.Button(self, text="Visit Page 4", command=lambda: controller.show_frame(PageFour))
+        button_15.pack()
+
+        button_16 = tk.Button(self, text="Visit Page 5", command=lambda: controller.show_frame(PageFive))
+        button_16.pack()
+
+        import_button_2 = tk.Button(self, text="Import results from Page One", command=import_2)
+        import_button_2.pack()
+
+        clear_button3 = tk.Button(self, text="Clear", command=clear_3)
+        clear_button3.pack()
+
+
+class PageFour(tk.Frame):
+
+    def __init__(self, parent, controller):
+
+        tk.Frame.__init__(self, parent)
+
+        def Delta_greek_hedging():
+            por_delta = float(text_port_delta.get())
+            op1_delta = float(text_op1_delta.get())
+            op2_delta = float(text_op2_delta.get())
+            por_greek = float(text_por_greek.get())
+            op1_greek = float(text_op1_greek.get())
+            op2_greek = float(text_op2_greek.get())
+
+            a = np.array([[op1_greek, op2_greek], [op1_delta, op2_delta]])
+            b = np.array([por_greek, por_delta])
+            c = np.linalg.solve(a, b)
+            contracts_op1 = c[0]
+            contracts_op2 = c[1]
+
+            return contracts_op1, contracts_op2
+
+        def display_4():
+            contract_list = Delta_greek_hedging()
+            price_display3.config(text="In order to Delta and Gamma hedge with the given options,\n you have to take a "+\
+                                   str(round(contract_list[0])) +  " position in option 1,\n and a " +  \
+                                   str(round(contract_list[1])) + " position in option 2.")
+
+        def both_4():
+            try:
+                Delta_greek_hedging()
+                display_4()
+
+            except:
+                messagebox.showinfo("Error", "invalid input, please check again your data")
+
+        def import_3():
+            try:
+                text_op1_delta.insert(0, delta)
+                if def_strategy2.get() == 'Gamma':
+                    text_op1_greek.insert(0, gamma)
+                if def_strategy2.get() == 'Theta':
+                    text_op1_greek.insert(0, theta)
+                if def_strategy2.get() == 'Vega':
+                    text_op1_greek.insert(0, vega)
+                if def_strategy2.get() == 'Rho':
+                    text_op1_greek.insert(0, rho)
+
+            except:
+                messagebox.showinfo("Error", "There are no data from page 1 to import.")
+
+        def import_4():
+            try:
+                text_op2_delta.insert(0, delta)
+                if def_strategy2.get() == 'Gamma':
+                    text_op2_greek.insert(0, gamma)
+                if def_strategy2.get() == 'Theta':
+                    text_op2_greek.insert(0, theta)
+                if def_strategy2.get() == 'Vega':
+                    text_op2_greek.insert(0, vega)
+                if def_strategy2.get() == 'Rho':
+                    text_op2_greek.insert(0, rho)
+
+            except:
+                messagebox.showinfo("Error", "There are no data from page 1 to import.")
+
+        def take_strategy2(strategy):
+            if def_strategy2.get() == 'Gamma':
+                z = "Gamma"
+            if def_strategy2.get() == 'Theta':
+                z = "Theta"
+            if def_strategy2.get() == 'Vega':
+                z = "Vega"
+            if def_strategy2.get() == 'Rho':
+                z = "Rho"
+
+            label17.config(text='Insert ' + str(z) + ' of the initial portfolio you want to hedge: ')
+            label18.config(text='Insert ' + str(z) + ' of the option 1 you to use to hedge: ')
+            label19.config(text='Insert ' + str(z) + ' of the option 2 you to use to hedge: ')
+
+        def clear_4():
+            text_port_delta.delete(0, 'end')
+            text_op1_delta.delete(0, 'end')
+            text_op2_delta.delete(0, 'end')
+            text_por_greek.delete(0, 'end')
+            text_op1_greek.delete(0, 'end')
+            text_op2_greek.delete(0, 'end')
+            price_display3.config(text="")
+
+        label13 = tk.Label(self, text='Welcome, select your strategy and insert the Portfolio data: ',
+                           font=("Times New Roman", 15))
+        label13.pack()
+
+        global def_strategy2
+        def_strategy2 = tk.StringVar(self)
+        def_strategy2.set('Gamma')
+        strategy2 = tk.OptionMenu(self, def_strategy2, "Gamma", "Theta", "Vega", "Rho", command=take_strategy2)
+        strategy2.pack()
+
+        # ask delta of the portfolio
+        label14 = tk.Label(self, text="Insert Portfolio initial Delta: ")
+        label14.pack()
+        text_port_delta = tk.Entry(self)
+        text_port_delta.pack()
+
+        # ask delta for each option
+        label15 = tk.Label(self, text="Insert Delta of option 1 you want to use to hedge: ")
+        label15.pack()
+        text_op1_delta = tk.Entry(self)
+        text_op1_delta.pack()
+        label16 = tk.Label(self, text="Insert Delta of option 2 you want to use to hedge: ")
+        label16.pack()
+        text_op2_delta = tk.Entry(self)
+        text_op2_delta.pack()
+
+        # ask greek of the portfolio
+        label17 = tk.Label(self, text="Insert Gamma of the initial portfolio you want to hedge: ")
+        label17.pack()
+        text_por_greek = tk.Entry(self)
+        text_por_greek.pack()
+
+        # ask greek for each option
+        label18 = tk.Label(self, text="Insert Gamma of the option 1 you to use to hedge: ")
+        label18.pack()
+        text_op1_greek = tk.Entry(self)
+        text_op1_greek.pack()
+        label19 = tk.Label(self, text="Insert Gamma of the option 2 you to use to hedge: ")
+        label19.pack()
+        text_op2_greek = tk.Entry(self)
+        text_op2_greek.pack()
+
+        calculate3 = tk.Button(self, text='Calculate', command=both_4, fg="red")
+        calculate3.pack()
+        price_display3 = tk.Label(self, text="")
+        price_display3.pack()
+
+        button_17 = tk.Button(self, text="Visit Home", command=lambda: controller.show_frame(StartPage))
+        button_17.pack()
+
+        button_18 = tk.Button(self, text="Visit Page 1", command=lambda: controller.show_frame(PageOne))
+        button_18.pack()
+
+        button_19 = tk.Button(self, text="Visit Page 2", command=lambda: controller.show_frame(PageTwo))
+        button_19.pack()
+
+        button_20 = tk.Button(self, text="Visit Page 3", command=lambda: controller.show_frame(PageThree))
+        button_20.pack()
+
+        button_21 = tk.Button(self, text="Visit Page 5", command=lambda: controller.show_frame(PageFive))
+        button_21.pack()
+
+        import_button_3 = tk.Button(self, text="Import results from Page One as option 1", command=import_3)
+        import_button_3.pack()
+
+        import_button_4 = tk.Button(self, text="Import results from Page One as option 2", command=import_4)
+        import_button_4.pack()
+
+        clear_button4 = tk.Button(self, text="Clear", command=clear_4)
+        clear_button4.pack()
+
+
+class PageFive(tk.Frame):
+
+    def __init__(self, parent, controller):
+        tk.Frame.__init__(self, parent)
+
+        def Delta_greek_hedging():
+            por_delta = float(text_port_delta.get())
+            op1_delta = float(text_op1_delta.get())
+            op2_delta = float(text_op2_delta.get())
+            por_greek1 = float(text_por_greek1.get())
+            op1_greek1 = float(text_op1_greek1.get())
+            op2_greek1 = float(text_op2_greek1.get())
+            por_greek2 = float(text_por_greek2.get())
+            op1_greek2 = float(text_op1_greek2.get())
+            op2_greek2 = float(text_op2_greek2.get())
+            price_op1 = float(text_priceop1.get())
+            price_op2 = float(text_priceop2.get())
+
+            prob = pulp.LpProblem("Minimize portfolio implementation", pulp.LpMinimize)
+            n1 = pulp.LpVariable("Number of contracts option 1", None, None, cat='Continous')
+            n2 = pulp.LpVariable("Number of contracts option 2", None, None, cat='Continous')
+
+            prob += price_op1 * n1 + price_op2 * n2, "Perfect hedging portfolio price to be minimized"
+            prob += op1_greek1 * n1 + op2_greek1 * n2 == -por_greek1, "Gamma constraint"
+            prob += op1_greek2 * n1 + op2_greek2 * n2 == -por_greek2, "Vega constraint"
+            prob.writeLP("MinimizePortfolioImplementation.lp")
+            prob.solve()
+            print("Status:", pulp.LpStatus[prob.status])
+
+            for v in prob.variables():
+                print(v.name, "=", v.varValue)
+
+            print("Perfect hedging portfolio price is = ", pulp.value(prob.objective))
+            op1 = prob.variables()[0].varValue
+            op2 = prob.variables()[1].varValue
+            final_port_delta = round(por_delta - (op1 * op1_delta + op2 * op2_delta))
+            position_price = pulp.value(prob.objective)
+
+            return op1, op2, final_port_delta, position_price
+
+        def display_5():
+
+            contract_list2 = Delta_greek_hedging()
+
+            price_display4.config(text="\nIn order to Delta hedge your portfolio,you need to take a " \
+            + str(contract_list2[0]) + ' position in the underlying asset,\n furthermore to Greek1 and Greek2 hedge '
+                                       'your portfolio you should take a position in option 1 of ' \
+            + str(round(contract_list2[1])) + " \nand in option 2 of " + str(round(contract_list2[2])) + ""
+            ". \nThe total cost of the position in option is " + str(contract_list2[3]))
+
+        def both_5():
+            try:
+                Delta_greek_hedging()
+                display_5()
+
+            except:
+                messagebox.showinfo("Error", "invalid input, please check again your data")
+
+        def take_strategy3(strategy):
+            global x
+            global y
+            if def_strategy3.get() == 'Gamma & Vega':
+                x = "Gamma"
+                y = "Vega"
+            if def_strategy3.get() == 'Gamma & Rho':
+                x = "Gamma"
+                y = "Rho"
+            if def_strategy3.get() == 'Vega & Rho':
+                x = "Vega"
+                y = "Rho"
+
+            label24.config(text='Insert ' + str(x) + ' of the initial portfolio you want to hedge: ')
+            label25.config(text='Insert ' + str(x) + ' of the option 1 you to use to hedge: ')
+            label26.config(text='Insert ' + str(x) + ' of the option 2 you to use to hedge: ')
+            label28.config(text='Insert ' + str(y) + ' of the initial portfolio you want to hedge: ')
+            label29.config(text='Insert ' + str(y) + ' of the option 1 you to use to hedge: ')
+            label30.config(text='Insert ' + str(y) + ' of the option 2 you to use to hedge: ')
+
+        def import_5():
+            try:
+                text_op1_delta.insert(0, delta)
+                text_priceop1.insert(0, price)
+                if def_strategy3.get() == 'Gamma & Vega':
+                    text_op1_greek1.insert(0, gamma)
+                    text_op1_greek2.insert(0, vega)
+                if def_strategy3.get() == 'Gamma & Rho':
+                    text_op1_greek1.insert(0, gamma)
+                    text_op1_greek2.insert(0, rho)
+                if def_strategy3.get() == 'Vega & Rho':
+                    text_op1_greek1.insert(0, vega)
+                    text_op1_greek2.insert(0, rho)
+
+            except:
+                messagebox.showinfo("Error", "There are no data from page 1 to import.")
+
+        def import_6():
+            try:
+                text_op2_delta.insert(0, delta)
+                text_priceop2.insert(0, price)
+                if def_strategy3.get() == 'Gamma & Vega':
+                    text_op2_greek1.insert(0, gamma)
+                    text_op2_greek2.insert(0, vega)
+                if def_strategy3.get() == 'Gamma & Rho':
+                    text_op2_greek1.insert(0, gamma)
+                    text_op2_greek2.insert(0, rho)
+                if def_strategy3.get() == 'Vega & Rho':
+                    text_op2_greek1.insert(0, vega)
+                    text_op2_greek2.insert(0, rho)
+
+            except:
+                messagebox.showinfo("Error", "There are no data from page 1 to import.")
+
+        def clear_5():
+            text_port_delta.delete(0, 'end')
+            text_op1_delta.delete(0, 'end')
+            text_op2_delta.delete(0, 'end')
+            text_por_greek1.delete(0, 'end')
+            text_op1_greek1.delete(0, 'end')
+            text_op2_greek1.delete(0, 'end')
+            text_priceop1.delete(0, 'end')
+            text_por_greek2.delete(0, 'end')
+            text_op1_greek2.delete(0, 'end')
+            text_op2_greek2.delete(0, 'end')
+            text_priceop2.delete(0, 'end')
+            price_display4.config(text="")
+
+        label20 = tk.Label(self, text='Welcome, select your strategy and insert the Portfolio data: ',
+                           font=("Times New Roman", 15))
+        label20.pack()
+        global def_strategy3
+        def_strategy3 = tk.StringVar(self)
+        def_strategy3.set('Gamma & Vega')
+        strategy2 = tk.OptionMenu(self, def_strategy3, "Gamma & Vega", "Gamma & Rho", "Vega & Rho", command=take_strategy3)
+        strategy2.pack()
+        # ask delta of the portfolio
+        label21 = tk.Label(self, text="Insert Portfolio initial Delta: ")
+        label21.pack()
+        text_port_delta = tk.Entry(self)
+        text_port_delta.pack()
+
+        # ask delta for each option
+        label22 = tk.Label(self, text="Insert Delta of option 1 you want to use to hedge: ")
+        label22.pack()
+        text_op1_delta = tk.Entry(self)
+        text_op1_delta.pack()
+        label23 = tk.Label(self, text="Insert Delta of option 2 you want to use to hedge: ")
+        label23.pack()
+        text_op2_delta = tk.Entry(self)
+        text_op2_delta.pack()
+
+        # ask greek 1 of the portfolio
+        label24 = tk.Label(self, text="Insert Gamma of the initial portfolio you want to hedge: ")
+        label24.pack()
+        text_por_greek1 = tk.Entry(self)
+        text_por_greek1.pack()
+
+        # ask greek 1 for each option
+        label25 = tk.Label(self, text='Insert Gamma of the option 1 you to use to hedge: ')
+        label25.pack()
+        text_op1_greek1 = tk.Entry(self)
+        text_op1_greek1.pack()
+        label26 = tk.Label(self, text='Insert Gamma of the option 2 you to use to hedge: ')
+        label26.pack()
+        text_op2_greek1 = tk.Entry(self)
+        text_op2_greek1.pack()
+
+        # ask price option 1
+        label27 = tk.Label(self, text="Insert the price of option 1: ")
+        label27.pack()
+        text_priceop1 = tk.Entry(self)
+        text_priceop1.pack()
+
+        # ask greek 2 of the portfolio
+        label28 = tk.Label(self, text="Insert Vega of the initial portfolio you want to hedge: ")
+        label28.pack()
+        text_por_greek2 = tk.Entry(self)
+        text_por_greek2.pack()
+
+        # ask price option 1
+        label29 = tk.Label(self, text='Insert Vega of the option 1 you to use to hedge: ')
+        label29.pack()
+        text_op1_greek2 = tk.Entry(self)
+        text_op1_greek2.pack()
+        label30 = tk.Label(self, text='Insert Vega of the option 2 you to use to hedge: ')
+        label30.pack()
+        text_op2_greek2 = tk.Entry(self)
+        text_op2_greek2.pack()
+
+        # ask price option 2
+        label31 = tk.Label(self, text="Insert the price of option 2: ")
+        label31.pack()
+        text_priceop2 = tk.Entry(self)
+        text_priceop2.pack()
+
+        calculate4 = tk.Button(self, text='Calculate', command=both_5, fg="red")
+        calculate4.pack()
+        price_display4 = tk.Label(self, text="")
+        price_display4.pack()
+
+        button_22 = tk.Button(self, text="Visit Home", command=lambda: controller.show_frame(StartPage))
+        button_22.pack(side='left')
+
+        button_23 = tk.Button(self, text="Visit Page 1", command=lambda: controller.show_frame(PageOne))
+        button_23.pack(side='left')
+
+        button_24 = tk.Button(self, text="Visit Page 2", command=lambda: controller.show_frame(PageTwo))
+        button_24.pack(side='left')
+
+        button_25 = tk.Button(self, text="Visit Page 3", command=lambda: controller.show_frame(PageThree))
+        button_25.pack(side='left')
+
+        button_26 = tk.Button(self, text="Visit Page 4", command=lambda: controller.show_frame(PageFour))
+        button_26.pack(side='left')
+
+        import_button_5 = tk.Button(self, text="Import results from Page One as option 1", command=import_5)
+        import_button_5.pack(side='left')
+
+        import_button_6 = tk.Button(self, text="Import results from Page One as option 2", command=import_6)
+        import_button_6.pack(side='left')
+
+        clear_button5 = tk.Button(self, text="Clear", command=clear_5)
+        clear_button5.pack(side='left')
+
+
+
+app = Window()
+
+app.mainloop()
